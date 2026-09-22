@@ -133,6 +133,45 @@ describe('detect — 强目标与保护单元', () => {
   });
 });
 
+describe('detect — 无保护单元（G=0）回归：CUT 绝不进自身参考', () => {
+  const NO_GUARD: WindowParams = {
+    guardCells: 0,
+    referenceCellsPerSide: 4,
+    pfa: 1e-3,
+  };
+
+  test('参考紧贴 CUT 的强目标必须检出，阈值与有保护带时同量级', () => {
+    // 复现现场配置：平背景 1，正中间幅度 200，G=0、R=4、Pfa=1e-3
+    const amps = new Array(41).fill(1);
+    amps[20] = 200;
+    const r = detect(amps, NO_GUARD);
+    expect(r.invalid[20]).toBe(false);
+    expect(r.detections[20]).toBe(true);
+    // 两侧参考全是平背景 1：阈值 = α·1 ≈ 11.03，与 G=2 时完全一致，
+    // 绝不能被 CUT 自己的 200 顶到两三百
+    expect(r.thresholds[20]).toBeCloseTo(computeAlpha(1e-3, 8), 9);
+  });
+
+  test('G=0 时加大 CUT 自身幅度不抬高本单元阈值', () => {
+    const baseline = new Array(41).fill(1);
+    const injected = [...baseline];
+    injected[20] = 200;
+    const r0 = detect(baseline, NO_GUARD);
+    const r1 = detect(injected, NO_GUARD);
+    // 阈值只由两侧参考决定；CUT 再强也不会混进自己的参考平均
+    expect(r1.thresholds[20]).toBeCloseTo(r0.thresholds[20]!, 12);
+  });
+
+  test('G=0 与 G=2 对同一平背景给出相同阈值（参考几何只差保护带）', () => {
+    const amps = new Array(41).fill(1);
+    amps[20] = 200;
+    const noGuard = detect(amps, NO_GUARD);
+    const guarded = detect(amps, { ...NO_GUARD, guardCells: 2 });
+    expect(noGuard.thresholds[20]).toBeCloseTo(guarded.thresholds[20]!, 12);
+    expect(guarded.detections[20]).toBe(true);
+  });
+});
+
 describe('detect — Pfa 降一个数量级：α 升高、检出变少', () => {
   test('同一条带目标的噪声线，Pfa 1e-3 → 1e-4，α 升高', () => {
     const rHigh = detect([1, 1, 1, 1, 1, 1, 1], {
