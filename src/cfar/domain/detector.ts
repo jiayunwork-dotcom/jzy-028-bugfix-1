@@ -71,13 +71,13 @@ export function detect(amplitudesInput: unknown, paramsInput: unknown): CfarResu
       continue;
     }
 
+    // 两侧参考一律采用切片给出的下标：它在任意 G（含 0）下都贴着 CUT
+    // 但不含 CUT 自身，绝不能在检测器里另算一套带 G=0 特判的起点。
     const leftSum = rangeSum(prefix, window.left[0], window.left[window.left.length - 1]);
-    // 右侧参考窗：从紧邻 CUT 的第一个参考单元起，取 R 个。
-    const rightRefStart = cut + guardCells + 1 - (guardCells > 0 ? 0 : 1);
     const rightSum = rangeSum(
       prefix,
-      rightRefStart,
-      rightRefStart + referenceCellsPerSide - 1,
+      window.right[0],
+      window.right[window.right.length - 1],
     );
     // 参考只包含两侧参考单元；CUT 与保护单元一律不参与。
     const mean = (leftSum + rightSum) / N;

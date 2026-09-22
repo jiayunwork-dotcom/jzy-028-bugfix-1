@@ -133,6 +133,58 @@ describe('detect — 强目标与保护单元', () => {
   });
 });
 
+describe('detect — 无保护单元（G=0）回归：CUT 绝不进自身参考', () => {
+  const NO_GUARD: WindowParams = {
+    guardCells: 0,
+    referenceCellsPerSide: 4,
+    pfa: 1e-3,
+  };
+
+  test('G=0 平背景中部强目标必须检出（回归：曾被自己顶高的阈值盖住）', () => {
+    // 手算复现：背景全 1、正中幅度 200、G=0、R=4、Pfa=1e-3。
+    // 故障实现把 CUT 划进右侧参考，均值=(4+203)/8=25.875，阈值≈284 > 200，漏检。
+    const amps = new Array(21).fill(1);
+    amps[10] = 200;
+    const r = detect(amps, NO_GUARD);
+    expect(r.invalid[10]).toBe(false);
+    expect(r.detections[10]).toBe(true);
+    // 两侧参考都是平背景，阈值应在十几的正常量级，绝不是两三百
+    expect(r.thresholds[10]).toBeCloseTo(computeAlpha(1e-3, 8), 9);
+    expect(r.thresholds[10] as number).toBeLessThan(20);
+  });
+
+  test('G=0 时加大 CUT 自身幅度不抬高本单元阈值，且与 G=2 同背景阈值一致', () => {
+    const baseline = new Array(21).fill(1);
+    const injected = [...baseline];
+    injected[10] = 200;
+    const r0 = detect(baseline, NO_GUARD);
+    const r1 = detect(injected, NO_GUARD);
+    const rGuarded = detect(injected, { ...NO_GUARD, guardCells: 2 });
+    expect(r1.thresholds[10]).toBeCloseTo(r0.thresholds[10]!, 12);
+    expect(r1.thresholds[10]).toBeCloseTo(rGuarded.thresholds[10]!, 9);
+  });
+
+  test('G=0 参考确实紧挨 CUT：抬高相邻参考单元会抬高阈值，抬高 CUT 自己不会', () => {
+    // 防反向回退：G=0 时参考必须贴着 CUT（下标 11 是 CUT 10 的右侧首参考），
+    // 而 CUT 10 自己不在参考里。
+    const rBaseline = detect(new Array(21).fill(1), NO_GUARD);
+    const cutLifted = new Array(21).fill(1);
+    cutLifted[10] = 50; // 抬高 CUT 自身：阈值不动
+    const rCut = detect(cutLifted, NO_GUARD);
+    const neighborLifted = new Array(21).fill(1);
+    neighborLifted[11] = 50; // 抬高紧邻参考单元：阈值随之抬高
+    const rNeighbor = detect(neighborLifted, NO_GUARD);
+    expect(rCut.thresholds[10]).toBeCloseTo(rBaseline.thresholds[10]!, 12);
+    expect(rNeighbor.thresholds[10]).toBeCloseTo(
+      computeAlpha(1e-3, 8) * (7 + 50) / 8,
+      9,
+    );
+    expect(rNeighbor.thresholds[10] as number).toBeGreaterThan(
+      rBaseline.thresholds[10] as number,
+    );
+  });
+});
+
 describe('detect — Pfa 降一个数量级：α 升高、检出变少', () => {
   test('同一条带目标的噪声线，Pfa 1e-3 → 1e-4，α 升高', () => {
     const rHigh = detect([1, 1, 1, 1, 1, 1, 1], {
